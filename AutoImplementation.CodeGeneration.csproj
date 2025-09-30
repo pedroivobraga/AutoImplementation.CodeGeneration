@@ -1,0 +1,44 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>netstandard2.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <LangVersion>preview</LangVersion>
+	  <EnforceExtendedAnalyzerRules>true</EnforceExtendedAnalyzerRules>
+	  <!-- Marcas recomendadas para geradores -->
+	  <IncludeBuildOutput>false</IncludeBuildOutput>
+	  <IsRoslynComponent>true</IsRoslynComponent>
+
+	  <!-- Informações do pacote NuGet -->
+	  <PackageId>AutoImplementation.CodeGeneration</PackageId>
+	  <Version>1.0.0</Version>
+	  <Authors>Pedro Ivo Carneiro</Authors>
+	  <Company></Company>
+	  <Description>Source Generator para criar implementações concretas de interfaces automaticamente</Description>
+	  <PackageTags>source-generator;roslyn;code-generation;masstransit</PackageTags>
+	  <PackageProjectUrl>https://github.com/pedroivobraga/AutoImplementation.CodeGeneration</PackageProjectUrl>
+	  <RepositoryUrl>https://github.com/pedroivobraga/AutoImplementation.CodeGeneration</RepositoryUrl>
+	  <PackageLicenseExpression>MIT</PackageLicenseExpression>
+	  <PackageReadmeFile>README.md</PackageReadmeFile>
+
+	  <!-- CRÍTICO: Não incluir como dependência -->
+	  <DevelopmentDependency>true</DevelopmentDependency>
+	  <IncludeBuildOutput>false</IncludeBuildOutput>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.CodeAnalysis.Analyzers" Version="3.11.0">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+    <PackageReference Include="Microsoft.CodeAnalysis.Common" Version="4.14.0" />
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="4.14.0" />
+  </ItemGroup>
+
+
+	<!-- IMPORTANTE: Empacotamento correto do analyzer -->
+	<ItemGroup>
+		<None Include="$(OutputPath)\$(AssemblyName).dll" Pack="true" PackagePath="analyzers/dotnet/cs" Visible="false" />
+		<None Include="README.md" Pack="true" PackagePath="\" />
+	</ItemGroup>
+</Project>
