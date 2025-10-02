@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Collections.Immutable;
 using System.Text;
@@ -174,6 +175,17 @@ namespace AutoImplementation.CodeGeneration
 
             var sb = new StringBuilder();
 
+            // Coleta os using statements da interface
+            var usingStatements = GetUsingStatementsFromInterface(iface);
+            if (usingStatements.Any())
+            {
+                foreach (var usingStatement in usingStatements)
+                {
+                    sb.AppendLine(usingStatement);
+                }
+                sb.AppendLine();
+            }
+
             if (!string.IsNullOrEmpty(namespaceName))
             {
                 sb.AppendLine($"namespace {namespaceName}");
@@ -190,33 +202,36 @@ namespace AutoImplementation.CodeGeneration
                 sb.AppendLine($"    public partial record {typeName} : {iface.ToDisplayString()}");
                 sb.AppendLine("    {");
 
-                // Gera propriedades com required init
+                // Gera propriedades com required init (exceto nullable types)
                 foreach (var p in positionalProps)
                 {
-                    var type = p.Type.ToDisplayString(SymbolDisplayFormat.MinimallyQualifiedFormat);
+                    var type = GetTypeDisplayString(p.Type, usingStatements);
                     var name = p.Name;
+                    var isNullable = IsNullableType(p.Type);
 
-                    // Usa 'required' para garantir inicialização
-                    sb.AppendLine($"        public required {type} {name} {{ get; init; }}");
+                    // Usa 'required' apenas para tipos não-nullable
+                    var requiredKeyword = isNullable ? "" : "required ";
+                    sb.AppendLine($"        public {requiredKeyword}{type} {name} {{ get; init; }}");
                 }
 
                 if (positionalProps.Length > 0)
                     sb.AppendLine();
 
                 // Indexers
-                AppendIndexers(sb, indexers);
+                AppendIndexers(sb, indexers, usingStatements);
 
                 // Métodos
                 foreach (var method in methods)
                 {
-                    AppendMethodStub(sb, method);
+                    AppendMethodStub(sb, method, usingStatements);
                     sb.AppendLine();
                 }
 
                 // Eventos
                 foreach (var ev in events)
                 {
-                    sb.AppendLine($"        public event {ev.Type.ToDisplayString()} {ev.Name};");
+                    var eventType = GetTypeDisplayString(ev.Type, usingStatements);
+                    sb.AppendLine($"        public event {eventType} {ev.Name};");
                 }
 
                 sb.AppendLine("    }");
@@ -227,126 +242,27 @@ namespace AutoImplementation.CodeGeneration
                 sb.AppendLine($"    public partial class {typeName} : {iface.ToDisplayString()}");
                 sb.AppendLine("    {");
 
-                // Propriedades com required
+                // Propriedades com required (exceto nullable types)
                 foreach (var p in positionalProps)
                 {
-                    var type = p.Type.ToDisplayString(SymbolDisplayFormat.MinimallyQualifiedFormat);
+                    var type = GetTypeDisplayString(p.Type, usingStatements);
                     var name = p.Name;
-                    sb.AppendLine($"        public required {type} {name} {{ get; init; }}");
+                    var isNullable = IsNullableType(p.Type);
+
+                    // Usa 'required' apenas para tipos não-nullable
+                    var requiredKeyword = isNullable ? "" : "required ";
+                    sb.AppendLine($"        public {requiredKeyword}{type} {name} {{ get; init; }}");
                 }
 
                 sb.AppendLine();
 
                 // Indexers
-                AppendIndexers(sb, indexers);
+                AppendIndexers(sb, indexers, usingStatements);
 
                 // Métodos
                 foreach (var method in methods)
                 {
-                    AppendMethodStub(sb, method);
-                    sb.AppendLine();
-                }
-
-                // Eventos
-                foreach (var ev in events)
-                {
-                    sb.AppendLine($"        public event {ev.Type.ToDisplayString()} {ev.Name};");
-                }
-
-                sb.AppendLine("    }");
-            }
-
-            if (!string.IsNullOrEmpty(namespaceName))
-            {
-                sb.AppendLine("}");
-            }
-
-            return sb.ToString();
-        }
-        private static string GenerateImplementationSource2(SourceProductionContext context, INamedTypeSymbol iface, string typeName, string namespaceName, bool useRecord)
-        {
-            var props = iface.GetMembers().OfType<IPropertySymbol>().ToArray();
-            var methods = iface.GetMembers().OfType<IMethodSymbol>().Where(m => m.MethodKind == MethodKind.Ordinary).ToArray();
-            var events = iface.GetMembers().OfType<IEventSymbol>().ToArray();
-
-            var indexers = props.Where(p => p.IsIndexer).ToArray();
-            foreach (var idx in indexers)
-            {
-                context.ReportDiagnostic(Diagnostic.Create(IndexerInfo, idx.Locations.FirstOrDefault(), iface.Name, idx.Name));
-            }
-
-            var positionalProps = props.Where(p => !p.IsIndexer).ToArray();
-
-            var sb = new StringBuilder();
-
-            if (!string.IsNullOrEmpty(namespaceName))
-            {
-                sb.AppendLine($"namespace {namespaceName}");
-                sb.AppendLine("{");
-            }
-
-            sb.AppendLine("    // <auto-generated/>");
-            sb.AppendLine($"    // Gerado por ImplementationGenerator em {DateTimeOffset.Now:O}");
-            sb.AppendLine();
-
-            if (useRecord)
-            {
-                // RECORD posicional
-                var ctorParams = string.Join(", ",
-                    positionalProps.Select(p => $"{p.Type.ToDisplayString(SymbolDisplayFormat.MinimallyQualifiedFormat)} {ToParamName(p.Name)}"));
-
-                sb.AppendLine($"    public partial record {typeName}({ctorParams}) : {iface.ToDisplayString()}");
-                sb.AppendLine("    {");
-                // Indexers
-                AppendIndexers(sb, indexers);
-                // Métodos
-                foreach (var method in methods)
-                {
-                    AppendMethodStub(sb, method);
-                    sb.AppendLine();
-                }
-                // Eventos
-                foreach (var ev in events)
-                {
-                    sb.AppendLine($"        public event {ev.Type.ToDisplayString()} {ev.Name};");
-                }
-                sb.AppendLine("    }");
-            }
-            else
-            {
-                // CLASS com construtor que recebe todas as props e atribui a auto-propriedades init-only
-                sb.AppendLine($"    public partial class {typeName} : {iface.ToDisplayString()}");
-                sb.AppendLine("    {");
-                // Propriedades
-                foreach (var p in positionalProps)
-                {
-                    var type = p.Type.ToDisplayString(SymbolDisplayFormat.MinimallyQualifiedFormat);
-                    var name = p.Name;
-                    // Se a interface tem get-only, geramos init; se tiver set na interface, a classe pode ter set; mas manter init; é melhor para mensagens
-                    sb.AppendLine($"        public {type} {name} {{ get; init; }}");
-                }
-                sb.AppendLine();
-
-                // Construtor
-                var ctorParamList = string.Join(", ",
-                    positionalProps.Select(p => $"{p.Type.ToDisplayString(SymbolDisplayFormat.MinimallyQualifiedFormat)} {ToParamName(p.Name)}"));
-                sb.AppendLine($"        public {typeName}({ctorParamList})");
-                sb.AppendLine("        {");
-                foreach (var p in positionalProps)
-                {
-                    var param = ToParamName(p.Name);
-                    sb.AppendLine($"            {p.Name} = {param};");
-                }
-                sb.AppendLine("        }");
-                sb.AppendLine();
-
-                // Indexers
-                AppendIndexers(sb, indexers);
-
-                // Métodos
-                foreach (var method in methods)
-                {
-                    AppendMethodStub(sb, method);
+                    AppendMethodStub(sb, method, usingStatements);
                     sb.AppendLine();
                 }
 
@@ -367,12 +283,12 @@ namespace AutoImplementation.CodeGeneration
             return sb.ToString();
         }
 
-        private static void AppendIndexers(StringBuilder sb, IPropertySymbol[] indexers)
+        private static void AppendIndexers(StringBuilder sb, IPropertySymbol[] indexers, IEnumerable<string> usingStatements)
         {
             foreach (var idx in indexers)
             {
-                var indexParams = string.Join(", ", idx.Parameters.Select(p => $"{p.Type.ToDisplayString()} {p.Name}"));
-                var type = idx.Type.ToDisplayString();
+                var indexParams = string.Join(", ", idx.Parameters.Select(p => $"{GetTypeDisplayString(p.Type, usingStatements)} {p.Name}"));
+                var type = GetTypeDisplayString(idx.Type, usingStatements);
                 var hasGet = idx.GetMethod is not null;
                 var hasSet = idx.SetMethod is not null;
 
@@ -387,9 +303,9 @@ namespace AutoImplementation.CodeGeneration
             }
         }
 
-        private static void AppendMethodStub(StringBuilder sb, IMethodSymbol method)
+        private static void AppendMethodStub(StringBuilder sb, IMethodSymbol method, IEnumerable<string> usingStatements)
         {
-            var returnType = method.ReturnType.ToDisplayString();
+            var returnType = GetTypeDisplayString(method.ReturnType, usingStatements);
             var parameters = string.Join(", ", method.Parameters.Select(p =>
             {
                 var modifiers = p.RefKind switch
@@ -400,13 +316,143 @@ namespace AutoImplementation.CodeGeneration
                     _ => string.Empty
                 };
                 var defaultValue = p.HasExplicitDefaultValue ? $" = {FormatDefaultValue(p)}" : string.Empty;
-                return $"{modifiers}{p.Type.ToDisplayString()} {p.Name}{defaultValue}";
+                return $"{modifiers}{GetTypeDisplayString(p.Type, usingStatements)} {p.Name}{defaultValue}";
             }));
 
             sb.AppendLine($"        public {returnType} {method.Name}({parameters})");
             sb.AppendLine("        {");
             sb.AppendLine("            throw new System.NotImplementedException();");
             sb.AppendLine("        }");
+        }
+
+        private static IEnumerable<string> GetUsingStatementsFromInterface(INamedTypeSymbol iface)
+        {
+            var usings = new HashSet<string>();
+
+            // Percorre todas as localizações da interface para coletar os usings
+            foreach (var location in iface.Locations)
+            {
+                if (location.SourceTree != null)
+                {
+                    var root = location.SourceTree.GetRoot();
+                    var usingDirectives = root.DescendantNodes()
+                        .OfType<Microsoft.CodeAnalysis.CSharp.Syntax.UsingDirectiveSyntax>()
+                        .Where(u => !u.StaticKeyword.IsKind(Microsoft.CodeAnalysis.CSharp.SyntaxKind.StaticKeyword)) // Exclui using static
+                        .Select(u => u.ToString().Trim())
+                        .Where(u => !string.IsNullOrEmpty(u));
+
+                    foreach (var usingDir in usingDirectives)
+                    {
+                        usings.Add(usingDir);
+                    }
+                }
+            }
+
+            // Coleta namespaces dos tipos usados nas propriedades, métodos e eventos
+            var props = iface.GetMembers().OfType<IPropertySymbol>().ToArray();
+            var methods = iface.GetMembers().OfType<IMethodSymbol>().Where(m => m.MethodKind == MethodKind.Ordinary).ToArray();
+            var events = iface.GetMembers().OfType<IEventSymbol>().ToArray();
+
+            // Adiciona using statements dos tipos das propriedades
+            foreach (var prop in props)
+            {
+                AddNamespacesFromType(prop.Type, usings);
+            }
+
+            // Adiciona using statements dos tipos dos métodos
+            foreach (var method in methods)
+            {
+                AddNamespacesFromType(method.ReturnType, usings);
+                foreach (var param in method.Parameters)
+                {
+                    AddNamespacesFromType(param.Type, usings);
+                }
+            }
+
+            // Adiciona using statements dos tipos dos eventos
+            foreach (var evt in events)
+            {
+                AddNamespacesFromType(evt.Type, usings);
+            }
+
+            return usings.OrderBy(u => u);
+        }
+
+        private static void AddNamespacesFromType(ITypeSymbol type, HashSet<string> usings)
+        {
+            if (type == null) return;
+
+            // Adiciona o namespace do tipo principal
+            var ns = type.ContainingNamespace?.ToDisplayString();
+            if (!string.IsNullOrEmpty(ns) && ns != "System" && !ns!.StartsWith("System."))
+            {
+                usings.Add($"using {ns};");
+            }
+
+            // Para tipos genéricos, adiciona os namespaces dos argumentos de tipo
+            if (type is INamedTypeSymbol namedType && namedType.IsGenericType)
+            {
+                foreach (var typeArg in namedType.TypeArguments)
+                {
+                    AddNamespacesFromType(typeArg, usings);
+                }
+            }
+
+            // Para arrays, adiciona o namespace do tipo de elemento
+            if (type is IArrayTypeSymbol arrayType)
+            {
+                AddNamespacesFromType(arrayType.ElementType, usings);
+            }
+        }
+
+        private static string GetTypeDisplayString(ITypeSymbol type, IEnumerable<string> usingStatements)
+        {
+            // Usa FullyQualifiedFormat para garantir que todos os tipos sejam resolvidos corretamente
+            var fullTypeName = type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+
+            // Remove o prefixo "global::" se presente
+            if (fullTypeName.StartsWith("global::"))
+            {
+                fullTypeName = fullTypeName.Substring(8);
+            }
+
+            // Para tipos simples do System, usa o nome simples
+            if (fullTypeName.StartsWith("System."))
+            {
+                var simpleName = type.ToDisplayString(SymbolDisplayFormat.MinimallyQualifiedFormat);
+                if (IsSystemType(simpleName))
+                {
+                    return simpleName;
+                }
+            }
+
+            return fullTypeName;
+        }
+
+        private static bool IsSystemType(string typeName)
+        {
+            // Lista de tipos comuns do System que podem usar nome simples
+            var systemTypes = new HashSet<string>
+            {
+                "string", "int", "long", "short", "byte", "sbyte", "uint", "ulong", "ushort",
+                "float", "double", "decimal", "bool", "char", "object", "DateTime", "Guid",
+                "TimeSpan", "void"
+            };
+
+            return systemTypes.Contains(typeName.Replace("?", ""));
+        }
+
+        private static bool IsNullableType(ITypeSymbol type)
+        {
+            // Verifica se é nullable reference type (string?, object?, etc.)
+            if (type.CanBeReferencedByName && type.NullableAnnotation == NullableAnnotation.Annotated)
+                return true;
+
+            // Verifica se é nullable value type (int?, DateTime?, etc.)
+            if (type.OriginalDefinition.SpecialType == SpecialType.System_Nullable_T)
+                return true;
+
+            return false;
         }
 
         private static string ToParamName(string propertyName)

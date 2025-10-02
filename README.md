@@ -1,6 +1,11 @@
 # AutoImplementation.CodeGeneration
 
-Source Generator que cria automaticamente implementações concretas (records/classes) para interfaces anotadas com o atributo `GenerateImplementationAttribute`.
+Source Generator que cria automaticamente implementações conc### ✅ Propriedades
+- Propriedades get-only são geradas com `init`
+- Propriedades de tipos **não-nullable** são geradas com `required`
+- Propriedades de tipos **nullable** (`string?`, `int?`, etc.) **não** são `required`
+- Suporte completo a tipos complexos e genéricos
+- **Using statements** da interface são automaticamente incluídos no código gerado (records/classes) para interfaces anotadas com o atributo `GenerateImplementationAttribute`.
 
 ## Como usar
 
@@ -99,8 +104,11 @@ public interface IPerson
 ## Recursos suportados
 
 ### ✅ Propriedades
-- Propriedades get-only são geradas com `required` e `init`
+- Propriedades get-only são geradas com `init`
+- Propriedades de tipos **não-nullable** são geradas com `required`
+- Propriedades de tipos **nullable** (`string?`, `int?`, etc.) **não** são `required`
 - Suporte completo a tipos complexos e genéricos
+- **Resolução automática de referências**: tipos com referência completa (como `List<Shared.DataTransfer.PurchaseOrder.ProductItem>`) são resolvidos automaticamente com os `using` statements apropriados
 
 ### ✅ Métodos
 - Métodos são gerados com `throw new NotImplementedException()`
@@ -157,10 +165,91 @@ public interface IRepository<T>
 // Gera: public partial record Repository<T> : IRepository<T>
 ```
 
+### Interface com tipos nullable
+
+```csharp
+[GenerateImplementation]
+public interface IUser
+{
+    string Name { get; }        // required (não-nullable)
+    string? Email { get; }      // não é required (nullable)
+    int Age { get; }            // required (não-nullable)
+    int? Score { get; }         // não é required (nullable)
+}
+
+// Gera:
+public partial record User : IUser
+{
+    public required string Name { get; init; }
+    public string? Email { get; init; }         // sem required
+    public required int Age { get; init; }
+    public int? Score { get; init; }            // sem required
+}
+```
+
+### Interface com referências completas
+
+```csharp
+namespace MyProject.Orders;
+
+[GenerateImplementation]
+public interface IPurchaseOrder
+{
+    List<Shared.DataTransfer.PurchaseOrder.ProductItem> Items { get; }
+    Shared.Common.Address DeliveryAddress { get; }
+    System.Collections.Generic.Dictionary<string, object> Metadata { get; }
+}
+
+// Gera automaticamente:
+using Shared.DataTransfer.PurchaseOrder;
+using Shared.Common;
+
+namespace MyProject.Orders
+{
+    public partial record PurchaseOrder : IPurchaseOrder
+    {
+        public required List<ProductItem> Items { get; init; }
+        public required Address DeliveryAddress { get; init; }
+        public required Dictionary<string, object> Metadata { get; init; }
+    }
+}
+```
+
+### Interface com dependências externas
+
+```csharp
+using System.Collections.Generic;
+using System.Threading.Tasks;
+using MyProject.Models;
+
+[GenerateImplementation]
+public interface IDataService
+{
+    List<Customer> Customers { get; }
+    Task<bool> SaveAsync(Customer customer);
+}
+
+// Gera (com using statements incluídos):
+using System.Collections.Generic;
+using System.Threading.Tasks;
+using MyProject.Models;
+
+public partial record DataService : IDataService
+{
+    public required List<Customer> Customers { get; init; }
+    
+    public Task<bool> SaveAsync(Customer customer)
+    {
+        throw new System.NotImplementedException();
+    }
+}
+```
+
 ## Notas importantes
 
 - As implementações geradas são **parciais**, permitindo extensão manual
-- Propriedades são geradas com `required` para garantir inicialização
+- Propriedades **não-nullable** são geradas com `required` para garantir inicialização
+- Propriedades **nullable** **não** são `required`, permitindo valores nulos opcionais
 - Use object initializers para instanciar os tipos gerados
 - Métodos sempre lançam `NotImplementedException` e devem ser implementados manualmente se necessário
 
