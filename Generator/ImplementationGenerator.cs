@@ -123,6 +123,84 @@ namespace AutoImplementation.CodeGeneration
             return (className!, useRecord);
         }
 
+        /// <summary>
+        /// Coleta todas as propriedades da interface e de suas interfaces base.
+        /// </summary>
+        private static IEnumerable<IPropertySymbol> GetAllProperties(INamedTypeSymbol iface)
+        {
+            var visited = new HashSet<INamedTypeSymbol>(SymbolEqualityComparer.Default);
+            var properties = new List<IPropertySymbol>();
+            CollectPropertiesRecursive(iface, visited, properties);
+            return properties;
+        }
+
+        private static void CollectPropertiesRecursive(INamedTypeSymbol iface, HashSet<INamedTypeSymbol> visited, List<IPropertySymbol> properties)
+        {
+            if (!visited.Add(iface))
+                return;
+
+            // Adiciona propriedades da interface atual
+            properties.AddRange(iface.GetMembers().OfType<IPropertySymbol>());
+
+            // Processa interfaces base
+            foreach (var baseInterface in iface.Interfaces)
+            {
+                CollectPropertiesRecursive(baseInterface, visited, properties);
+            }
+        }
+
+        /// <summary>
+        /// Coleta todos os métodos ordinários da interface e de suas interfaces base.
+        /// </summary>
+        private static IEnumerable<IMethodSymbol> GetAllMethods(INamedTypeSymbol iface)
+        {
+            var visited = new HashSet<INamedTypeSymbol>(SymbolEqualityComparer.Default);
+            var methods = new List<IMethodSymbol>();
+            CollectMethodsRecursive(iface, visited, methods);
+            return methods;
+        }
+
+        private static void CollectMethodsRecursive(INamedTypeSymbol iface, HashSet<INamedTypeSymbol> visited, List<IMethodSymbol> methods)
+        {
+            if (!visited.Add(iface))
+                return;
+
+            // Adiciona métodos da interface atual
+            methods.AddRange(iface.GetMembers().OfType<IMethodSymbol>().Where(m => m.MethodKind == MethodKind.Ordinary));
+
+            // Processa interfaces base
+            foreach (var baseInterface in iface.Interfaces)
+            {
+                CollectMethodsRecursive(baseInterface, visited, methods);
+            }
+        }
+
+        /// <summary>
+        /// Coleta todos os eventos da interface e de suas interfaces base.
+        /// </summary>
+        private static IEnumerable<IEventSymbol> GetAllEvents(INamedTypeSymbol iface)
+        {
+            var visited = new HashSet<INamedTypeSymbol>(SymbolEqualityComparer.Default);
+            var events = new List<IEventSymbol>();
+            CollectEventsRecursive(iface, visited, events);
+            return events;
+        }
+
+        private static void CollectEventsRecursive(INamedTypeSymbol iface, HashSet<INamedTypeSymbol> visited, List<IEventSymbol> events)
+        {
+            if (!visited.Add(iface))
+                return;
+
+            // Adiciona eventos da interface atual
+            events.AddRange(iface.GetMembers().OfType<IEventSymbol>());
+
+            // Processa interfaces base
+            foreach (var baseInterface in iface.Interfaces)
+            {
+                CollectEventsRecursive(baseInterface, visited, events);
+            }
+        }
+
         private static readonly DiagnosticDescriptor IndexerInfo = new(
             id: "GI0001",
             title: "Indexer em interface não é suportado na geração posicional",
@@ -161,9 +239,10 @@ namespace AutoImplementation.CodeGeneration
 
         private static string GenerateImplementationSource(SourceProductionContext context, INamedTypeSymbol iface, string typeName, string namespaceName, bool useRecord)
         {
-            var props = iface.GetMembers().OfType<IPropertySymbol>().ToArray();
-            var methods = iface.GetMembers().OfType<IMethodSymbol>().Where(m => m.MethodKind == MethodKind.Ordinary).ToArray();
-            var events = iface.GetMembers().OfType<IEventSymbol>().ToArray();
+            // Coleta membros da interface e de todas as interfaces herdadas
+            var props = GetAllProperties(iface).ToArray();
+            var methods = GetAllMethods(iface).ToArray();
+            var events = GetAllEvents(iface).ToArray();
 
             var indexers = props.Where(p => p.IsIndexer).ToArray();
             foreach (var idx in indexers)
@@ -328,30 +407,15 @@ namespace AutoImplementation.CodeGeneration
         private static IEnumerable<string> GetUsingStatementsFromInterface(INamedTypeSymbol iface)
         {
             var usings = new HashSet<string>();
+            var visited = new HashSet<INamedTypeSymbol>(SymbolEqualityComparer.Default);
 
-            // Percorre todas as localizações da interface para coletar os usings
-            foreach (var location in iface.Locations)
-            {
-                if (location.SourceTree != null)
-                {
-                    var root = location.SourceTree.GetRoot();
-                    var usingDirectives = root.DescendantNodes()
-                        .OfType<Microsoft.CodeAnalysis.CSharp.Syntax.UsingDirectiveSyntax>()
-                        .Where(u => !u.StaticKeyword.IsKind(Microsoft.CodeAnalysis.CSharp.SyntaxKind.StaticKeyword)) // Exclui using static
-                        .Select(u => u.ToString().Trim())
-                        .Where(u => !string.IsNullOrEmpty(u));
-
-                    foreach (var usingDir in usingDirectives)
-                    {
-                        usings.Add(usingDir);
-                    }
-                }
-            }
+            // Coleta usings da interface e de suas interfaces base
+            CollectUsingStatementsRecursive(iface, visited, usings);
 
             // Coleta namespaces dos tipos usados nas propriedades, métodos e eventos
-            var props = iface.GetMembers().OfType<IPropertySymbol>().ToArray();
-            var methods = iface.GetMembers().OfType<IMethodSymbol>().Where(m => m.MethodKind == MethodKind.Ordinary).ToArray();
-            var events = iface.GetMembers().OfType<IEventSymbol>().ToArray();
+            var props = GetAllProperties(iface).ToArray();
+            var methods = GetAllMethods(iface).ToArray();
+            var events = GetAllEvents(iface).ToArray();
 
             // Adiciona using statements dos tipos das propriedades
             foreach (var prop in props)
@@ -376,6 +440,37 @@ namespace AutoImplementation.CodeGeneration
             }
 
             return usings.OrderBy(u => u);
+        }
+
+        private static void CollectUsingStatementsRecursive(INamedTypeSymbol iface, HashSet<INamedTypeSymbol> visited, HashSet<string> usings)
+        {
+            if (!visited.Add(iface))
+                return;
+
+            // Percorre todas as localizações da interface para coletar os usings
+            foreach (var location in iface.Locations)
+            {
+                if (location.SourceTree != null)
+                {
+                    var root = location.SourceTree.GetRoot();
+                    var usingDirectives = root.DescendantNodes()
+                        .OfType<Microsoft.CodeAnalysis.CSharp.Syntax.UsingDirectiveSyntax>()
+                        .Where(u => !u.StaticKeyword.IsKind(Microsoft.CodeAnalysis.CSharp.SyntaxKind.StaticKeyword)) // Exclui using static
+                        .Select(u => u.ToString().Trim())
+                        .Where(u => !string.IsNullOrEmpty(u));
+
+                    foreach (var usingDir in usingDirectives)
+                    {
+                        usings.Add(usingDir);
+                    }
+                }
+            }
+
+            // Processa interfaces base
+            foreach (var baseInterface in iface.Interfaces)
+            {
+                CollectUsingStatementsRecursive(baseInterface, visited, usings);
+            }
         }
 
         private static void AddNamespacesFromType(ITypeSymbol type, HashSet<string> usings)

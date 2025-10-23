@@ -110,6 +110,13 @@ public interface IPerson
 - Suporte completo a tipos complexos e genéricos
 - **Resolução automática de referências**: tipos com referência completa (como `List<Shared.DataTransfer.PurchaseOrder.ProductItem>`) são resolvidos automaticamente com os `using` statements apropriados
 
+### ✅ Herança de Interfaces
+- **Suporte completo a interfaces que herdam de outras interfaces**
+- Todos os membros (propriedades, métodos, eventos) das interfaces base são automaticamente incluídos
+- Funciona com herança múltipla e hierarquias complexas
+- Prevenção automática de duplicatas em casos de herança diamante
+- [Veja documentação detalhada](README_INHERITANCE.md)
+
 ### ✅ Métodos
 - Métodos são gerados com `throw new NotImplementedException()`
 - Suporte a parâmetros `ref`, `out`, `in`
@@ -184,6 +191,66 @@ public partial record User : IUser
     public string? Email { get; init; }         // sem required
     public required int Age { get; init; }
     public int? Score { get; init; }            // sem required
+}
+```
+
+### Interface com herança
+
+```csharp
+// Interface base
+public interface IEntity
+{
+    int Id { get; }
+    DateTime CreatedAt { get; }
+}
+
+// Interface derivada
+[GenerateImplementation]
+public interface IProduct : IEntity
+{
+    string Name { get; }
+    decimal Price { get; }
+}
+
+// Gera um record com TODAS as propriedades:
+public partial record Product : IProduct
+{
+    public required int Id { get; init; }              // de IEntity
+    public required DateTime CreatedAt { get; init; }  // de IEntity
+    public required string Name { get; init; }         // de IProduct
+    public required decimal Price { get; init; }       // de IProduct
+}
+```
+
+### Interface com herança múltipla
+
+```csharp
+public interface IEntity
+{
+    int Id { get; }
+}
+
+public interface IAuditable
+{
+    DateTime CreatedAt { get; }
+    DateTime? UpdatedAt { get; }
+}
+
+[GenerateImplementation]
+public interface IProduct : IEntity, IAuditable
+{
+    string Name { get; }
+    decimal Price { get; }
+}
+
+// Gera um record com propriedades de TODAS as interfaces:
+public partial record Product : IProduct
+{
+    public required int Id { get; init; }              // de IEntity
+    public required DateTime CreatedAt { get; init; }  // de IAuditable
+    public DateTime? UpdatedAt { get; init; }          // de IAuditable
+    public required string Name { get; init; }         // de IProduct
+    public required decimal Price { get; init; }       // de IProduct
 }
 ```
 

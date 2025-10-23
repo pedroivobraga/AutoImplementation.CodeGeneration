@@ -1,0 +1,81 @@
+using AutoImplementation.CodeGeneration;
+using System;
+
+namespace ExampleProject
+{
+    // Exemplo 1: Herança Simples
+    public interface IEntity
+    {
+        int Id { get; }
+        DateTime CreatedAt { get; }
+    }
+
+    [GenerateImplementation]
+    public interface IProduct : IEntity
+    {
+        string Name { get; }
+        decimal Price { get; }
+    }
+    // Gera: Product record com Id, CreatedAt, Name e Price
+
+    // Exemplo 2: Herança Múltipla
+    public interface IAuditable
+    {
+        DateTime? UpdatedAt { get; }
+        string UpdatedBy { get; }
+    }
+
+    [GenerateImplementation]
+    public interface IDocument : IEntity, IAuditable
+    {
+        string Title { get; }
+        string Content { get; }
+    }
+    // Gera: Document record com Id, CreatedAt, UpdatedAt, UpdatedBy, Title e Content
+
+    // Exemplo 3: Hierarquia Profunda
+    public interface IUser : IEntity
+    {
+        string Name { get; }
+        string Email { get; }
+    }
+
+    [GenerateImplementation]
+    public interface IAdminUser : IUser
+    {
+        string Department { get; }
+        bool IsSuperAdmin { get; }
+    }
+    // Gera: AdminUser record com Id, CreatedAt, Name, Email, Department e IsSuperAdmin
+
+    // Exemplo 4: Com métodos e eventos
+    public interface INotifiable
+    {
+        event Action<string>? OnNotification;
+        void Notify(string message);
+    }
+
+    [GenerateImplementation]
+    public interface INotifiableEntity : IEntity, INotifiable
+    {
+        string Description { get; }
+    }
+    // Gera: NotifiableEntity record com todas as propriedades, métodos e eventos
+
+    // Exemplo 5: Usando class em vez de record
+    [GenerateImplementation(useRecord: false)]
+    public interface ICustomer : IEntity, IAuditable
+    {
+        string CustomerName { get; }
+        string? PhoneNumber { get; }
+    }
+    // Gera: Customer class com todas as propriedades das interfaces herdadas
+
+    // Exemplo 6: Nome customizado
+    [GenerateImplementation("PremiumProduct")]
+    public interface IPremiumItem : IProduct, IAuditable
+    {
+        int LoyaltyPoints { get; }
+    }
+    // Gera: PremiumProduct record com todas as propriedades herdadas
+}
